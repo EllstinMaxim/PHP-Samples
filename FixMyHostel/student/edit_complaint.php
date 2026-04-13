@@ -2,6 +2,7 @@
 session_start();
 include("../includes/db.php");
 include("../includes/functions.php");
+include("../includes/sidebar.php");
 
 if(!isset($_SESSION['role']) || $_SESSION['role'] != "student"){
     header("Location: ../login.php");
@@ -17,7 +18,7 @@ $user_id = $_SESSION['user_id'];
 $id = $_GET['id'];
 $message = "";
 
-$check = $conn->query("SELECT * FROM complaints WHERE complaint_id='$id' AND student_id='$user_id' AND status='Pending' LIMIT 1");
+$check = $conn->query("SELECT c.*, u.name AS student_name, u.email AS student_email, u.block_name, u.floor_number, u.room_number FROM complaints c JOIN users u ON c.student_id=u.id WHERE c.complaint_id='$id' AND c.student_id='$user_id' AND c.status='Pending' LIMIT 1");
 
 if($check->num_rows == 0){
     die("This complaint cannot be edited or does not exist.");
@@ -27,17 +28,11 @@ $row = $check->fetch_assoc();
 
 if(isset($_POST['update']))
 {
-    $student_name   = trim($_POST['student_name']);
-    $student_email  = trim($_POST['student_email']);
-    $phone          = trim($_POST['phone']);
-    $block_name     = trim($_POST['block_name']);
-    $floor_number   = trim($_POST['floor_number']);
-    $room_number    = trim($_POST['room_number']);
-    $bed_number     = trim($_POST['bed_number']);
-    $priority_level = trim($_POST['priority_level']);
-    $title          = trim($_POST['title']);
-    $category       = trim($_POST['category']);
-    $description    = trim($_POST['description']);
+    $phone          = $conn->real_escape_string(trim($_POST['phone']));
+    $priority_level = $conn->real_escape_string(trim($_POST['priority_level']));
+    $title          = $conn->real_escape_string(trim($_POST['title']));
+    $category       = $conn->real_escape_string(trim($_POST['category']));
+    $description    = $conn->real_escape_string(trim($_POST['description']));
     $department     = detectDepartment($title, $category, $description);
 
     $issue_image = $row['issue_image'];
@@ -63,13 +58,7 @@ if(isset($_POST['update']))
     }
 
     $sql = "UPDATE complaints SET
-        student_name='$student_name',
-        student_email='$student_email',
         phone='$phone',
-        block_name='$block_name',
-        floor_number='$floor_number',
-        room_number='$room_number',
-        bed_number='$bed_number',
         priority_level='$priority_level',
         title='$title',
         category='$category',
@@ -92,12 +81,19 @@ if(isset($_POST['update']))
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edit Complaint - FixMyHostel</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/fontawesome-free/css/all.min.css">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/dist/css/adminlte.min.css">
     <link rel="stylesheet" href="../css/style.css">
 </head>
-<body>
-<div class="container login-wrapper d-flex align-items-center justify-content-center">
-    <div class="col-lg-8">
+<body class="hold-transition sidebar-mini layout-fixed">
+<div class="wrapper">
+        <?php renderSidebar('my_complaints.php'); ?>
+        <?php renderTopNavbar('dashboard.php'); ?>
+    <div class="content-wrapper">
+        <section class="content pt-3">
+            <div class="container-fluid">
+                <div class="p-2 p-md-3">
+    <div class="mx-auto" style="max-width: 960px;">
         <div class="dashboard-card p-4">
             <h2 class="fw-bold mb-3">Edit Complaint #<?php echo $row['complaint_id']; ?></h2>
 
@@ -109,11 +105,11 @@ if(isset($_POST['update']))
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Student Name</label>
-                        <input type="text" name="student_name" class="form-control" value="<?php echo $row['student_name']; ?>" required>
+                        <input type="text" class="form-control" value="<?php echo $row['student_name']; ?>" readonly>
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Student Email</label>
-                        <input type="email" name="student_email" class="form-control" value="<?php echo $row['student_email']; ?>" required>
+                        <input type="email" class="form-control" value="<?php echo $row['student_email']; ?>" readonly>
                     </div>
                 </div>
 
@@ -123,39 +119,11 @@ if(isset($_POST['update']))
                         <input type="text" name="phone" class="form-control" value="<?php echo $row['phone']; ?>" required>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Block Name</label>
-                        <select name="block_name" class="form-select" required>
-                            <option value="Jati" <?php if($row['block_name']=='Jati') echo 'selected'; ?>>Jati</option>
-                            <option value="Meranti" <?php if($row['block_name']=='Meranti') echo 'selected'; ?>>Meranti</option>
-                            <option value="Cengal" <?php if($row['block_name']=='Cengal') echo 'selected'; ?>>Cengal</option>
-                        </select>
+                        <label class="form-label">Location</label>
+                        <input type="text" class="form-control" value="<?php echo $row['block_name'] . ' - Floor ' . $row['floor_number'] . ' - Room ' . $row['room_number']; ?>" readonly>
                     </div>
                 </div>
 
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Floor Number</label>
-                        <select name="floor_number" class="form-select" required>
-                            <option value="1" <?php if($row['floor_number']=='1') echo 'selected'; ?>>1</option>
-                            <option value="2" <?php if($row['floor_number']=='2') echo 'selected'; ?>>2</option>
-                            <option value="3" <?php if($row['floor_number']=='3') echo 'selected'; ?>>3</option>
-                            <option value="4" <?php if($row['floor_number']=='4') echo 'selected'; ?>>4</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Room Number</label>
-                        <input type="text" name="room_number" class="form-control" value="<?php echo $row['room_number']; ?>" required>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Bed Number</label>
-                        <select name="bed_number" class="form-select" required>
-                            <option value="A" <?php if($row['bed_number']=='A') echo 'selected'; ?>>A</option>
-                            <option value="B" <?php if($row['bed_number']=='B') echo 'selected'; ?>>B</option>
-                            <option value="C" <?php if($row['bed_number']=='C') echo 'selected'; ?>>C</option>
-                            <option value="D" <?php if($row['bed_number']=='D') echo 'selected'; ?>>D</option>
-                        </select>
-                    </div>
-                </div>
 
                 <div class="row">
                     <div class="col-md-6 mb-3">
@@ -210,7 +178,14 @@ if(isset($_POST['update']))
             </form>
         </div>
     </div>
+                </div>
+            </div>
+        </section>
+    </div>
 </div>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/jquery/jquery.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/dist/js/adminlte.min.js"></script>
 
 <script>
 const prioritySelect = document.getElementById('priority_level');

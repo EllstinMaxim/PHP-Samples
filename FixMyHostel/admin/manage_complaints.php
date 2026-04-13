@@ -1,131 +1,238 @@
 <?php
 session_start();
 include("../includes/db.php");
+include("../includes/functions.php");
+include("../includes/sidebar.php");
 
-if(!isset($_SESSION['role']) || $_SESSION['role'] != "admin")
-{
+if ($_SESSION['role'] != "admin") {
     header("Location: ../login.php");
     exit();
 }
 
-$name = isset($_SESSION['name']) ? $_SESSION['name'] : 'Admin';
+$user_id = $_SESSION['user_id'];
+$name = $_SESSION['name'];
+$user_id_escaped = $conn->real_escape_string((string)$user_id);
 
-if(isset($_POST['update_status']))
-{
-    $complaint_id = $_POST['complaint_id'];
-    $status = $_POST['status'];
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'unread_counts') {
+    header('Content-Type: application/json');
 
-    $conn->query("UPDATE complaints SET status='$status' WHERE complaint_id='$complaint_id'");
+    $unreadResult = $conn->query("
+        SELECT c.complaint_id, COUNT(cc.comment_id) AS unread_count
+        FROM complaints c
+        LEFT JOIN complaint_comment_reads r
+            ON r.complaint_id = c.complaint_id AND r.user_id='$user_id_escaped'
+        LEFT JOIN complaint_comments cc
+            ON cc.complaint_id = c.complaint_id
+           AND cc.commented_by != '$user_id_escaped'
+           AND (r.last_read_at IS NULL OR cc.commented_at > r.last_read_at)
+        WHERE c.department='Admin'
+        GROUP BY c.complaint_id
+    ");
+
+    $counts = [];
+    if ($unreadResult) {
+        while ($unreadRow = $unreadResult->fetch_assoc()) {
+            $counts[(string)$unreadRow['complaint_id']] = (int)$unreadRow['unread_count'];
+        }
+    }
+
+    echo json_encode(['success' => true, 'counts' => $counts]);
+    exit();
 }
 
-$result = $conn->query("SELECT * FROM complaints ORDER BY complaint_id DESC");
+$result = $conn->query("
+    SELECT u.*, c.*,
+           c.comment_count,
+           c.last_commented_at,
+           r.last_read_at,
+           (
+               SELECT COUNT(*)
+               FROM complaint_comments cc
+               WHERE cc.complaint_id = c.complaint_id
+                 AND cc.commented_by != '$user_id_escaped'
+                 AND (r.last_read_at IS NULL OR cc.commented_at > r.last_read_at)
+           ) AS unread_count
+    FROM complaints c
+    LEFT JOIN users u ON c.student_id = u.id
+    LEFT JOIN complaint_comment_reads r
+        ON r.complaint_id = c.complaint_id AND r.user_id='$user_id_escaped'
+    WHERE c.department='Admin'
+    ORDER BY c.complaint_id DESC
+");
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Complaints - FixMyHostel Portal</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <title>Manage Complaints</title>
+
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/fontawesome-free/css/all.min.css">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/dist/css/adminlte.min.css">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-responsive/css/responsive.bootstrap4.min.css">
     <link rel="stylesheet" href="../css/style.css">
 </head>
-<body>
 
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-md-3 col-lg-2 sidebar">
-            <h4>FixMyHostel</h4>
-            <a href="dashboard.php"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
-            <a href="manage_complaints.php" class="active"><i class="bi bi-folder-check me-2"></i>Manage Complaints</a>
-            <a href="../logout.php"><i class="bi bi-box-arrow-left me-2"></i>Logout</a>
-        </div>
+<body class="hold-transition sidebar-mini layout-fixed">
+<div class="wrapper">
+    <?php renderSidebar('manage_complaints.php'); ?>
+    <?php renderTopNavbar('dashboard.php'); ?>
 
-        <div class="col-md-9 col-lg-10 p-4">
-            <div class="topbar">
-                <h3 class="section-title mb-1">Manage Complaints</h3>
-                <div class="small-muted">Welcome, <?php echo $name; ?></div>
-            </div>
+    <div class="content-wrapper">
+        <section class="content pt-3">
+            <div class="container-fluid">
+                <div class="p-2 p-md-3">
+                    <div class="topbar">
+                        <h3>Manage Complaints</h3>
+                        <div class="small-muted">Welcome, <?php echo $name; ?></div>
+                    </div>
 
-            <div class="table-card">
-                <div class="table-responsive">
-                    <table class="table mb-0 align-middle">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Student</th>
-                                <th>Phone</th>
-                                <th>Email</th>
-                                <th>Block</th>
-                                <th>Floor</th>
-                                <th>Room</th>
-                                <th>Bed</th>
-                                <th>Priority</th>
-                                <th>Title</th>
-                                <th>Category</th>
-                                <th>Picture</th>
-                                <th>Description</th>
-                                <th>Status</th>
-                                <th>Update</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if($result->num_rows > 0) { while($row = $result->fetch_assoc()) { ?>
+                    <div class="table-card">
+                        <div class="table-responsive">
+                            <table class="table align-middle js-datatable">
+                                <thead>
                                 <tr>
-                                    <td>#<?php echo $row['complaint_id']; ?></td>
-                                    <td><?php echo $row['student_name']; ?></td>
-                                    <td><?php echo $row['phone']; ?></td>
-                                    <td><?php echo $row['email']; ?></td>
-                                    <td><?php echo $row['block_name']; ?></td>
-                                    <td><?php echo $row['floor_number']; ?></td>
-                                    <td><?php echo $row['room_number']; ?></td>
-                                    <td><?php echo $row['bed_number']; ?></td>
-                                    <td><?php echo $row['priority_level']; ?></td>
-                                    <td><?php echo $row['title']; ?></td>
-                                    <td><?php echo $row['category']; ?></td>
-                                    <td>
-                                        <?php if(!empty($row['issue_image'])) { ?>
-                                            <a href="../uploads/<?php echo $row['issue_image']; ?>" target="_blank" class="btn btn-sm btn-outline-primary">View</a>
-                                        <?php } else { ?>
-                                            <span class="text-muted">No Image</span>
-                                        <?php } ?>
-                                    </td>
-                                    <td><?php echo $row['description']; ?></td>
-                                    <td>
-                                        <?php
-                                        if($row['status'] == 'Pending'){
-                                            echo "<span class='badge-pending'>Pending</span>";
-                                        } elseif($row['status'] == 'In Progress'){
-                                            echo "<span class='badge-progress'>In Progress</span>";
-                                        } else {
-                                            echo "<span class='badge-resolved'>Resolved</span>";
-                                        }
-                                        ?>
-                                    </td>
-                                    <td>
-                                        <form method="POST" class="d-flex gap-2">
-                                            <input type="hidden" name="complaint_id" value="<?php echo $row['complaint_id']; ?>">
-                                            <select name="status" class="form-select form-select-sm">
-                                                <option value="Pending" <?php if($row['status'] == 'Pending') echo 'selected'; ?>>Pending</option>
-                                                <option value="In Progress" <?php if($row['status'] == 'In Progress') echo 'selected'; ?>>In Progress</option>
-                                                <option value="Resolved" <?php if($row['status'] == 'Resolved') echo 'selected'; ?>>Resolved</option>
-                                            </select>
-                                            <button type="submit" name="update_status" class="btn btn-main btn-sm">Save</button>
-                                        </form>
-                                    </td>
+                                    <th>Student</th>
+                                    <th>Title</th>
+                                    <th>Category</th>
+                                    <th>Priority</th>
+                                    <th>Status</th>
+                                    <!-- <th>Chat</th> -->
+                                    <th>Action</th>
                                 </tr>
-                            <?php } } else { ?>
-                                <tr>
-                                    <td colspan="15" class="text-center py-4">No complaints available.</td>
-                                </tr>
-                            <?php } ?>
-                        </tbody>
-                    </table>
+                                </thead>
+
+                                <tbody>
+                                <?php while ($row = $result->fetch_assoc()) { ?>
+                                    <tr>
+                                        <td><?php echo $row['name']; ?></td>
+
+                                        <td>
+                                            <a href="../view_complaint.php?id=<?php echo $row['complaint_id']; ?>">
+                                                <?php echo $row['title']; ?>
+                                            </a>
+                                        </td>
+
+                                        <td><?php echo ucfirst($row['category']); ?></td>
+                                        <td style="vertical-align: middle;">
+                                            <?php echo priorityFlag($row['priority_level']); ?>
+                                        </td>
+
+                                        <td style="vertical-align: middle;">
+                                            <?php echo statusBadge($row['status']); ?>
+                                        </td>
+
+                                        <!-- <td>
+                                            <?php $unreadCount = (int)($row['unread_count'] ?? 0); ?>
+                                            <a href="complaint_comments.php?id=<?php echo $row['complaint_id']; ?>" class="btn btn-app btn-app-custom m-0">
+                                                <span class="badge bg-info unread-badge" data-complaint-id="<?php echo (int)$row['complaint_id']; ?>"><?php echo $unreadCount; ?></span>
+                                                <i class="fas fa-envelope"></i> Comments
+                                            </a>
+                                        </td> -->
+
+                                        <td>
+                                            <div class="d-flex align-items-center flex-nowrap">
+
+                                                <?php $unreadCount = (int)($row['unread_count'] ?? 0); ?>
+
+                                                <!-- Comments Button -->
+                                                 <span class="pr-3">
+                                                     <a href="complaint_comments.php?id=<?php echo $row['complaint_id']; ?>" class="btn btn-app btn-app-custom gap-2 m-1">
+                                                         <span class="badge bg-info unread-badge" data-complaint-id="<?php echo (int)$row['complaint_id']; ?>"><?php echo $unreadCount; ?></span>
+                                                         <i class="fas fa-comments"></i> Comments
+                                                     </a>
+                                                 </span>
+                                                <?php if ($row['status'] !== 'closed') { ?>
+                                                    <!-- Status Form -->
+                                                    <form method="POST" class="d-flex align-items-center">
+                                                        <input type="hidden" name="complaint_id" value="<?php echo $row['complaint_id']; ?>">
+
+                                                        <select name="status" class="form-select form-select-sm me-2" style="width:auto;">
+                                                            <?php
+                                                                $statuses = [
+                                                                    'pending' => 'Pending',
+                                                                    'in_progress' => 'In Progress',
+                                                                    'resolved' => 'Resolved',
+                                                                    'closed' => 'Closed'
+                                                                ];
+
+                                                                foreach ($statuses as $value => $label) {
+                                                                    $selected = ($row['status'] === $value) ? 'selected' : '';
+                                                                    echo "<option value='$value' $selected>$label</option>";
+                                                                }
+                                                            ?>
+                                                        </select>
+                                                        <span class="pr-2"></span>
+                                                        <button type="submit" name="update_status" class="btn btn-main btn-sm">
+                                                            Update
+                                                        </button>
+                                                    </form>
+
+                                                <?php } else { ?>
+                                                    <span class="badge-closed ms-2">Closed</span>
+                                                <?php } ?>
+
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php } ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
 </div>
+
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/jquery/jquery.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables/jquery.dataTables.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-responsive/js/dataTables.responsive.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-responsive/js/responsive.bootstrap4.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/dist/js/adminlte.min.js"></script>
+
+<script>
+$(function () {
+    $('.js-datatable').DataTable({
+        responsive: true,
+        autoWidth: false,
+        pageLength: 10,
+        columns: [
+            { width: "15%" }, // Student
+            { width: "20%" }, // Title
+            { width: "15%" }, // Category
+            { width: "10%" }, // Priority
+            { width: "10%" }, // Status
+            { width: "30%" }  // Action
+        ]
+    });
+
+    function refreshUnreadBadges() {
+        $.get('manage_complaints.php', { ajax: 'unread_counts' }, function(response) {
+            if (!response || !response.success || !response.counts) {
+                return;
+            }
+
+            $('.unread-badge').each(function() {
+                var complaintId = String($(this).data('complaint-id'));
+                var unread = Object.prototype.hasOwnProperty.call(response.counts, complaintId)
+                    ? parseInt(response.counts[complaintId], 10)
+                    : 0;
+
+                $(this).text(isNaN(unread) ? 0 : unread);
+            });
+        }, 'json');
+    }
+
+    refreshUnreadBadges();
+    setInterval(refreshUnreadBadges, 3000);
+});
+</script>
 
 </body>
 </html>

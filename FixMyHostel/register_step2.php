@@ -1,6 +1,7 @@
 <?php
 session_start();
 include("includes/db.php");
+include("includes/functions.php");
 
 if (!isset($_SESSION['register_data'])) {
     header("Location: register_step1.php");
@@ -19,22 +20,31 @@ if (isset($_POST['register'])) {
         $error = "Passwords do not match.";
     } else {
         $data = $_SESSION['register_data'];
+        $name = $conn->real_escape_string($data['name']);
+        $ic_number = $conn->real_escape_string($data['ic_number']);
+        $registration_number = $conn->real_escape_string($data['registration_number']);
+        $email = $conn->real_escape_string($data['email']);
+        $block_name = $conn->real_escape_string($data['block_name']);
+        $floor_number = $conn->real_escape_string($data['floor_number']);
+        $room_number = $conn->real_escape_string($data['room_number']);
+        $hashed_password = hashPassword($password);
 
-        $check = $conn->query("SELECT * FROM users WHERE email='{$data['email']}' OR registration_number='{$data['registration_number']}'");
+        $check = $conn->query("SELECT * FROM users WHERE email='$email' OR registration_number='$registration_number'");
         if ($check->num_rows > 0) {
             $error = "Email or registration number already exists.";
         } else {
-            $sql = "INSERT INTO users (name, ic_number, registration_number, email, block_name, floor_number, room_number, role, password)
+            $sql = "INSERT INTO users (name, ic_number, registration_number, email, block_name, floor_number, room_number, role, password, reset_code)
                     VALUES (
-                        '{$data['name']}',
-                        '{$data['ic_number']}',
-                        '{$data['registration_number']}',
-                        '{$data['email']}',
-                        '{$data['block_name']}',
-                        '{$data['floor_number']}',
-                        '{$data['room_number']}',
+                        '$name',
+                        '$ic_number',
+                        '$registration_number',
+                        '$email',
+                        '$block_name',
+                        '$floor_number',
+                        '$room_number',
                         'student',
-                        '$password'
+                        '$hashed_password',
+                        '1'
                     )";
 
             if ($conn->query($sql) === TRUE) {

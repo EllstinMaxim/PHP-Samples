@@ -3,111 +3,220 @@ session_start();
 include("../includes/db.php");
 include("../includes/functions.php");
 
-if(!isset($_SESSION['role']) || $_SESSION['role'] != "admin"){
+if(!isset($_SESSION['role']) || !isSuperAdmin($_SESSION['role'])){
     header("Location: ../login.php");
     exit();
 }
 
-if(isset($_POST['update_status'])){
-    $id = $_POST['complaint_id'];
-    $status = $_POST['status'];
-    $conn->query("UPDATE complaints SET status='$status' WHERE complaint_id='$id' AND department='Admin'");
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'notification_count') {
+
+    header('Content-Type: application/json');
+
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode(['success' => false]);
+        exit();
+    }
+
+    $user_id = (int)$_SESSION['user_id'];
+    $data = getUserNotifications($conn, $user_id);
+
+    echo json_encode([
+        'success' => true,
+        'count' => $data['count'],
+        'latest' => $data['latest']
+    ]);
+    exit();
 }
 
-$total = $conn->query("SELECT COUNT(*) AS total FROM complaints")->fetch_assoc();
-$pending = $conn->query("SELECT COUNT(*) AS total FROM complaints WHERE status='Pending'")->fetch_assoc();
-$progress = $conn->query("SELECT COUNT(*) AS total FROM complaints WHERE status='In Progress'")->fetch_assoc();
-$resolved = $conn->query("SELECT COUNT(*) AS total FROM complaints WHERE status='Resolved'")->fetch_assoc();
+include("../includes/sidebar.php");
 
-$result = $conn->query("SELECT * FROM complaints ORDER BY complaint_id DESC");
+if(!isset($_SESSION['role']) || !isSuperAdmin($_SESSION['role'])){
+    header("Location: ../login.php");
+    exit();
+}
+
+$user_id = (int)$_SESSION['user_id'];
+$notificationCount = getUserNotificationCount($conn, $user_id);
+
+$total = $conn->query("SELECT COUNT(*) AS total FROM complaints")->fetch_assoc();
+$pending = $conn->query("SELECT COUNT(*) AS total FROM complaints WHERE status='pending'")->fetch_assoc();
+$progress = $conn->query("SELECT COUNT(*) AS total FROM complaints WHERE status='in_progress'")->fetch_assoc();
+$resolved = $conn->query("SELECT COUNT(*) AS total FROM complaints WHERE status='resolved'")->fetch_assoc();
+$total_users = $conn->query("SELECT COUNT(*) AS total FROM users")->fetch_assoc();
+$total_students = $conn->query("SELECT COUNT(*) AS total FROM users WHERE role='student'")->fetch_assoc();
+$total_maintenance = $conn->query("SELECT COUNT(*) AS total FROM users WHERE role IN ('maintenance_associate', 'maintenance_supervisor', 'maintenance')")->fetch_assoc();
+
+$result = $conn->query("SELECT c.*, u.name AS student_name, u.email AS student_email, u.block_name, u.floor_number, u.room_number FROM complaints c JOIN users u ON c.student_id=u.id ORDER BY c.complaint_id DESC");
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - FixMyHostel</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Super Admin Dashboard - FixMyHostel</title>
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/fontawesome-free/css/all.min.css">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/dist/css/adminlte.min.css">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-responsive/css/responsive.bootstrap4.min.css">
+    <link rel="stylesheet" href="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/toastr/toastr.min.css">
     <link rel="stylesheet" href="../css/style.css">
 </head>
-<body>
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-md-3 col-lg-2 sidebar">
-            <h4>FixMyHostel</h4>
-            <a href="dashboard.php" class="active">Dashboard</a>
-            <a href="../logout.php">Logout</a>
-        </div>
+<body class="hold-transition sidebar-mini layout-fixed">
+<div class="wrapper">
+        <?php renderSidebar('dashboard.php'); ?>
+        <?php renderTopNavbar('dashboard.php'); ?>
 
-        <div class="col-md-9 col-lg-10 p-4">
-            <div class="topbar">
-                <h3 class="section-title mb-1">Admin Dashboard</h3>
-                <div class="small-muted">Welcome, <?php echo $_SESSION['name']; ?></div>
+        <div class="content-wrapper">
+            <section class="content pt-3">
+                <div class="container-fluid">
+        <div class="p-2 p-md-3">
+            <div class="topbar d-flex justify-content-between align-items-start flex-wrap">
+                <div>
+                    <h3 class="section-title mb-1">Admin Dashboard</h3>
+                    <div class="small-muted">Welcome, <?php echo $_SESSION['name']; ?></div>
+                </div>
+                <a href="notifications.php" class="btn btn-app mt-2 mt-md-0">
+                    <span class="badge bg-danger"><?php echo (int)$notificationCount; ?></span>
+                    <i class="fas fa-bell"></i> Notifications
+                </a>
             </div>
 
             <div class="row g-4 mb-4">
-                <div class="col-md-3"><div class="stat-card bg-stat-1"><div>Total</div><h3><?php echo $total['total']; ?></h3></div></div>
-                <div class="col-md-3"><div class="stat-card bg-stat-1"><div>Pending</div><h3><?php echo $pending['total']; ?></h3></div></div>
-                <div class="col-md-3"><div class="stat-card bg-stat-2"><div>In Progress</div><h3><?php echo $progress['total']; ?></h3></div></div>
-                <div class="col-md-3"><div class="stat-card bg-stat-3"><div>Resolved</div><h3><?php echo $resolved['total']; ?></h3></div></div>
+                <div class="col-md-2"><div class="stat-card bg-stat-1"><div>Total Complaints</div><h3><?php echo $total['total']; ?></h3></div></div>
+                <div class="col-md-2"><div class="stat-card bg-stat-1"><div>Pending</div><h3><?php echo $pending['total']; ?></h3></div></div>
+                <div class="col-md-2"><div class="stat-card bg-stat-2"><div>In Progress</div><h3><?php echo $progress['total']; ?></h3></div></div>
+                <div class="col-md-2"><div class="stat-card bg-stat-3"><div>Resolved</div><h3><?php echo $resolved['total']; ?></h3></div></div>
+                <div class="col-md-2"><div class="stat-card bg-stat-1"><div>Total Users</div><h3><?php echo $total_users['total']; ?></h3></div></div>
+                <div class="col-md-2"><div class="stat-card bg-stat-2"><div>Students</div><h3><?php echo $total_students['total']; ?></h3></div></div>
+            </div>
+            <div class="row g-4 mb-4">
+                <div class="col-md-3"><div class="stat-card bg-stat-3"><div>Maintenance Staff</div><h3><?php echo $total_maintenance['total']; ?></h3></div></div>
+                <div class="col-md-9"></div>
             </div>
 
             <div class="table-card">
                 <div class="table-responsive">
-                    <table class="table mb-0">
+                    <table class="table mb-0 align-middle js-datatable">
                         <thead>
                             <tr>
-                                <th>Complaint ID</th>
-                                <th>Student Email</th>
-                                <th>Block</th>
-                                <th>Department</th>
-                                <th>Priority</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Update</th>
+                                <th class="fw-600">Complaint ID</th>
+                                <th class="fw-600">Student Name</th>
+                                <th class="fw-600">Complaint Title</th>
+                                <th class="fw-600">Category</th>
+                                <th class="fw-600">Status</th>
+                                <th class="fw-600">Created Date</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if($result->num_rows > 0) { while($row = $result->fetch_assoc()) { ?>
                                 <tr>
-                                    <td><a href="../view_complaint.php?id=<?php echo $row['complaint_id']; ?>">#<?php echo $row['complaint_id']; ?></a></td>
-                                    <td><?php echo $row['student_email']; ?></td>
-                                    <td><?php echo $row['block_name']; ?></td>
-                                    <td><?php echo $row['department']; ?></td>
-                                    <td><?php echo priorityFlag($row['priority_level']); ?></td>
+                                    <td><a href="../view_complaint.php?id=<?php echo $row['complaint_id']; ?>" class="text-decoration-none">#<?php echo $row['complaint_id']; ?></a></td>
+                                    <td><?php echo $row['student_name']; ?></td>
+                                    <td><a href="../view_complaint.php?id=<?php echo $row['complaint_id']; ?>" class="text-decoration-none"><?php echo $row['title']; ?></a></td>
+                                    <td><?php echo ucfirst($row['category']); ?></td>
                                     <td>
                                         <?php
-                                        if($row['status'] == 'Pending') echo "<span class='badge-pending'>Pending</span>";
-                                        elseif($row['status'] == 'In Progress') echo "<span class='badge-progress'>In Progress</span>";
-                                        else echo "<span class='badge-resolved'>Resolved</span>";
+                                        if($row['status'] == 'pending'){
+                                            echo "<span class='badge-pending'>Pending</span>";
+                                        } elseif($row['status'] == 'in_progress'){
+                                            echo "<span class='badge-progress'>In Progress</span>";
+                                        } elseif($row['status'] == 'resolved'){
+                                            echo "<span class='badge-resolved'>Resolved</span>";
+                                        } elseif($row['status'] == 'closed'){
+                                            echo "<span class='badge-closed'>Closed</span>";
+                                        } else {
+                                            echo "<span class='badge-pending'>" . ucfirst($row['status']) . "</span>";
+                                        }
                                         ?>
                                     </td>
-                                    <td><?php echo $row['created_at']; ?></td>
-                                    <td>
-                                        <?php if($row['department'] == 'Admin') { ?>
-                                            <form method="POST" class="d-flex gap-2">
-                                                <input type="hidden" name="complaint_id" value="<?php echo $row['complaint_id']; ?>">
-                                                <select name="status" class="form-select form-select-sm">
-                                                    <option value="Pending" <?php if($row['status']=='Pending') echo 'selected'; ?>>Pending</option>
-                                                    <option value="In Progress" <?php if($row['status']=='In Progress') echo 'selected'; ?>>In Progress</option>
-                                                    <option value="Resolved" <?php if($row['status']=='Resolved') echo 'selected'; ?>>Resolved</option>
-                                                </select>
-                                                <button type="submit" name="update_status" class="btn btn-main btn-sm">Save</button>
-                                            </form>
-                                        <?php } else { ?>
-                                            <span class="locked-text">Maintenance Only</span>
-                                        <?php } ?>
-                                    </td>
+                                    <td><?php echo date('M d, Y', strtotime($row['created_at'])); ?></td>
                                 </tr>
                             <?php } } else { ?>
-                                <tr><td colspan="8" class="text-center py-4">No complaints found.</td></tr>
+                                <tr><td colspan="7" class="text-center py-4">No complaints found.</td></tr>
                             <?php } ?>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
+                </div>
+            </section>
+        </div>
     </div>
-</div>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/jquery/jquery.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables/jquery.dataTables.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-responsive/js/dataTables.responsive.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/datatables-responsive/js/responsive.bootstrap4.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/dist/js/adminlte.min.js"></script>
+<script src="../AdminLTE/ColorlibHQ-AdminLTE-5988c4f/plugins/toastr/toastr.min.js"></script>
+<script>
+$(function () {
+    toastr.options = {
+        "closeButton": true,
+        "progressBar": true,
+        "positionClass": "toast-top-right",
+        "timeOut": "3000", // auto close after 3 sec
+        "extendedTimeOut": "1000",
+        "showMethod": "fadeIn",
+        "hideMethod": "fadeOut"
+    };
+
+    if ("Notification" in window) {
+        if (Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
+    }
+
+    $('.js-datatable').DataTable({
+        responsive: true,
+        autoWidth: false,
+        pageLength: 10,
+        order: []
+    });
+    let lastCount = <?php echo (int)$notificationCount; ?>;
+
+    function refreshNotificationBadge() {
+        $.get('dashboard.php', { ajax: 'notification_count' }, function(response) {
+
+            if (!response || !response.success) return;
+
+            let newCount = response.count;
+
+            // Update badge
+            $('.btn-app .badge').text(newCount);
+
+            if (newCount > lastCount && response.latest) {
+
+                let actor = response.latest.actor_name;
+                let title = response.latest.complaint_title;
+
+                let message = actor + " commented on: " + title;
+
+                // ✅ Toastr
+                toastr.info(message);
+
+                // ✅ Browser notification
+                if (Notification.permission === "granted") {
+                    new Notification("FixMyHostel", {
+                        body: message,
+                        icon: "../images/logo.png"
+                    });
+                }
+            }
+
+            lastCount = newCount;
+
+        }, 'json');
+    }
+
+    // Initial load
+    refreshNotificationBadge();
+
+    // Refresh every 3 seconds
+    setInterval(refreshNotificationBadge, 3000);
+});
+</script>
 </body>
 </html>

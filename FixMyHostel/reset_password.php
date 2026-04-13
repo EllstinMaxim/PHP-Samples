@@ -1,6 +1,7 @@
 <?php
 session_start();
 include("includes/db.php");
+include("includes/functions.php");
 
 if (!isset($_SESSION['reset_email']) || !isset($_SESSION['reset_verified'])) {
     header("Location: forgot_password.php");
@@ -19,7 +20,8 @@ if (isset($_POST['reset'])) {
     } elseif ($password !== $confirm_password) {
         $error = "Passwords do not match.";
     } else {
-        $conn->query("UPDATE users SET password='$password', reset_code=NULL, reset_code_expiry=NULL WHERE email='$email'");
+        $hashed_password = hashPassword($password);
+        $conn->query("UPDATE users SET password='$hashed_password', reset_code='1', reset_code_expiry=NULL WHERE email='$email'");
         unset($_SESSION['reset_email']);
         unset($_SESSION['reset_verified']);
         header("Location: login.php");
